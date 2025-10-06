@@ -1,11 +1,12 @@
 // Cross-browser compatibility
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
+// === Detect and save secret key (as you already had) ===
 const detectAndSaveSecretKey = () => {
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.target.classList.contains('display') && mutation.target.innerText !== '••••••••••••••••') {
-                const secretKey = mutation.target.innerText;
+                const secretKey = mutation.target.innerText.trim();
                 browserAPI.storage.local.set({ Secret_Key: secretKey }, () => {
                     showSecretKeyNotification(secretKey);
                 });
@@ -20,6 +21,7 @@ const detectAndSaveSecretKey = () => {
     }
 };
 
+// === Notification ===
 const showSecretKeyNotification = (secretKey) => {
     const notificationDiv = document.createElement('div');
     notificationDiv.style.cssText = `
@@ -75,8 +77,61 @@ const showSecretKeyNotification = (secretKey) => {
     }, 4000);
 };
 
+// === TOTP Generation ===
+function generateTOTP(secret) {
+    // Base32 decode
+    function base32tohex(base32) {
+        const base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        let bits = "";
+        let hex = "";
+        for (let i = 0; i < base32.length; i++) {
+            const val = base32chars.indexOf(base32.charAt(i).toUpperCase());
+            if (val >= 0) bits += val.toString(2).padStart(5, "0");
+        }
+        for (let i = 0; i + 4 <= bits.length; i += 4) {
+            hex += parseInt(bits.substr(i, 4), 2).toString(16);
+        }
+        return hex;
+    }
+
+    const epoch = Math.round(new Date().getTime() / 1000.0);
+    const time = Math.floor(epoch / 30).toString(16).padStart(16, "0");
+
+    const shaObj = new jsSHA("SHA-1", "HEX");
+    shaObj.setHMACKey(base32tohex(secret), "HEX");
+    shaObj.update(time);
+    const hmac = shaObj.getHMAC("HEX");
+
+    const offset = parseInt(hmac.substring(hmac.length - 1), 16);
+    const otp = (parseInt(hmac.substr(offset * 2, 8), 16) & 0x7fffffff) + "";
+    return otp.substr(otp.length - 6, 6);
+}
+
+// === Auto-generate and send TOTP to content.js ===
+function sendTOTP() {
+    browserAPI.storage.local.get("Secret_Key", (data) => {
+        if (data.Secret_Key) {
+            const totp = generateTOTP(data.Secret_Key);
+
+            // Send to the current active tab
+            browserAPI.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    browserAPI.tabs.sendMessage(tabs[0].id, {
+                        type: "TOTP_CODE",
+                        code: totp
+                    });
+                }
+            });
+        }
+    });
+}
+
+// === Init ===
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
     detectAndSaveSecretKey();
 } else {
     document.addEventListener('DOMContentLoaded', detectAndSaveSecretKey);
 }
+
+// Generate + send a TOTP every 30s
+setInterval(sendTOTP, 1000); // check every second (updates when new 30s window starts)
