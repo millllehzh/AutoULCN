@@ -20,11 +20,15 @@
   "content_scripts": [
     {
       "matches": [
-        "*://login.uaccess.leidenuniv.nl/*", 
-        "*://mfa.services.universiteitleiden.nl/*", 
-        "*://account.services.universiteitleiden.nl/portaal/*"
+        "*://login.uaccess.leidenuniv.nl/*",
+        "*://mfa.services.universiteitleiden.nl/*",
+        "*://account.services.universiteitleiden.nl/portaal/*",
+        "*://login.leidenuniv.nl/*", 
+        "*://*.brightspace.leidenuniv.nl/*"
       ],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ]
 }
+
